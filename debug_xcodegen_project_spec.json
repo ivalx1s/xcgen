@@ -1,0 +1,16 @@
+{
+  "packages": {
+    "remote-darwin-foundationplus": {
+      "url": "git@github.com:ivalx1s/darwin-foundationplus.git",
+      "version": "1.0.0"
+    },
+    "remote-swift-stdlibplus": {
+      "url": "git@github.com:ivalx1s/swift-stdlibplus.git",
+      "version": "0.6.0"
+    },
+    "remote-darwin-perdux": {
+      "url": "git@github.com:ivalx1s/darwin-perdux.git",
+      "version": "3.5.0"
+    }
+  }
+}
