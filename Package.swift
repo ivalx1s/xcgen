@@ -3,19 +3,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "xcgen",
+    name: "xcgbootstrap",
 	platforms: [
 		.macOS(.v11)
 	],
 	products: [
-		.executable(name: "xcgen", targets: ["xcgen"])
+		.executable(name: "xcgbootstrap", targets: ["xcgbootstrap"])
 	],
     dependencies: [
          .package(url: "git@github.com:apple/swift-argument-parser.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
-            name: "xcgen",
+            name: "xcgbootstrap",
             dependencies: [
 				.product(name: "ArgumentParser", package: "swift-argument-parser")
 			]
