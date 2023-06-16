@@ -54,7 +54,7 @@ struct ClonePackagesRecursively: ParsableCommand {
 		shouldDisplay: true
 	)
 	
-	static let repositoryBasePath = "Packages"
+	static let repositoryBasePath = "../Packages"
 	
 	@Argument(help: "Path to the json file containing information about packages")
 	var jsonFilePath: String
@@ -97,9 +97,7 @@ struct ClonePackagesRecursively: ParsableCommand {
 				
 				let repositoryName = remote.url!.split(separator: "/").last!
 				let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
-
-				let repositorySupposedURL = URL(fileURLWithPath: fileManager.currentDirectoryPath).deletingLastPathComponent()
-				let repositoryPath = repositorySupposedURL.absoluteString.appending("/\(Self.repositoryBasePath)/\(folderName)")
+				
 				let repositorySupposedPath = fileManager.currentDirectoryPath.appending("/\(Self.repositoryBasePath)/\(folderName)")
 				if !fileManager.fileExists(atPath: repositorySupposedPath) {
 					let cloneTask = Process()
