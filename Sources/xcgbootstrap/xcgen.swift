@@ -109,6 +109,23 @@ struct ClonePackagesRecursively: ParsableCommand {
 					cloneTask.waitUntilExit()
 				}
 				
+				// Fetch task
+				let pullTask = Process()
+				pullTask.launchPath = "/usr/bin/env"
+				pullTask.arguments = ["git", "fetch"]
+				pullTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
+				pullTask.standardOutput = FileHandle.nullDevice
+				pullTask.standardError = FileHandle.nullDevice
+				pullTask.launch()
+				pullTask.waitUntilExit()
+				
+				// Check the termination status of the pull task
+				if pullTask.terminationStatus == 0 {
+					print("Successfully fetched latest changes from the repo")
+				} else {
+					print("❗️Failed to fetch changes from \(remote.url!) for package \(packageName). Error \(pullTask.terminationStatus). Up-to-date state of the repo cannot be guranteed.")
+				}
+				
 				let checkoutTask = Process()
 				checkoutTask.launchPath = "/usr/bin/env"
 				checkoutTask.arguments = ["git", "checkout", remote.version!]
