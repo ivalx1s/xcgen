@@ -1,0 +1,75 @@
+#!/bin/zsh
+
+set -e
+set -o pipefail
+
+trap 'echo "An error occurred. Exiting."; exit 1' ERR
+
+PROJECT_NAME="Unitea"
+PROJECT_DIR=$PWD
+GRAPHQL_CODEGEN_CONFIG_DIR=$PROJECT_DIR/Autogen/Networking/GraphQL/apollo-codegen-config.json
+
+# Check if 'bootstrap' subcommand is passed
+if [[ $1 == "bootstrap" ]]; then
+
+    # Check if homebrew is installed
+    if ! command -v brew &> /dev/null
+    then
+        echo "Homebrew is not installed on your system. It is required to bootstrap the project"
+        echo "Install Homebrew first and try again"
+        echo "Visit https://brew.sh or use this command:"
+        echo "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        exit 1
+    fi
+
+    # Check if mint is installed
+    if ! command -v mint &> /dev/null
+    then
+        # Install mint using homebrew
+        brew install mint
+    fi
+
+    # Run mint bootstrap
+    mint bootstrap --link
+fi
+
+# Assuming swiftgen is in the PATH, find its symlink.
+# Replace 'swiftgen' with the actual symlink if it's different.
+SWIFTGEN_SYMLINK=$(which swiftgen)
+
+# Resolve the symlink to the actual path.
+SWIFTGEN_PATH=$(realpath $SWIFTGEN_SYMLINK)
+
+# Check for the existence of 'Packages' directory in the parent directory
+if [[ ! -d "../Packages" ]]; then
+    # If 'Packages' directory does not exist, run xcgbootstrap
+    xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
+fi
+
+# Check if 'fetch' subcommand is passed
+if [[ $1 == "fetch" ]]; then
+    # xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
+    echo "cloning dependencies..."
+    xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
+    echo "cloning dependencies..."
+fi
+
+if [[ $1 == "clean" ]]; then
+    echo "cleaning Xcode and SPM caches..."
+    rm -rf ~/Library/org.swift.swiftpm
+	rm -rf ~/Library/Caches/org.swift.swiftpm
+	rm -rf ~/Library/Developer/Xcode/DerivedData
+	echo "done"
+fi
+
+
+apollo-ios-cli generate -p $GRAPHQL_CODEGEN_CONFIG_DIR
+
+# Use the full path of swiftgen,
+# we need this to overcome the bug where
+# swift executable cannot access its bundle
+# when launched from a symlink
+$SWIFTGEN_PATH config run --config "$PROJECT_DIR/Autogen/Assets/swiftgen.yml"
+xcodegen generate --spec $PROJECT_NAME.xcodeprojless
+
+open $PROJECT_NAME.xcodeproj
