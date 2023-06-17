@@ -38,3 +38,16 @@ The `fetch` subcommand updates the repositories of dependencies. This command sh
 new version tags.
 
 The `clean` subcommand can be used to wipe all the Xcode and SPM related caches.
+
+---
+
+Make sure packages are proxied by local paths in your XcodeGen manifest, for example:
+
+packages:
+  local-swift-collections:
+    path: "../Packages/swift-collections/"
+  remote-swift-collections:
+    url: https://github.com/apple/swift-collections.git
+    version: 1.0.2
+
+The xcgbootstrap script automatically creates the Packages folder in the parent directory of your project directory. This method allows Xcode to accommodate local changes in packages, track these changes in its GUI, and launch much faster. As a result, the overall developer experience is significantly enhanced compared to when remote packages are used.
