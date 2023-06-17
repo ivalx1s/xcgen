@@ -1,4 +1,3 @@
-
 XCGEN – Automated Bootstrapping for XcodeGen-based Xcode Workflow
 ==================================================================
 
@@ -17,17 +16,17 @@ development workflow. By automating these tasks, you can focus more on building 
 Usage:
 ------
 
-- Put this shell script in in project root directory alongside Xcodegen manifest
-- Fine-tune for your use case, e.g. remove graphql or swiftgen related parts if you dont need them, or add those specific to your peoject
-- Ensure the script is executable with `chmod +x .xcgen`
-- Add `alias xcgen='./.xcgen'` to your `.zshrc` profile
-- Run `xcgen bootstrap`
-- After pulling new code from the repository, regenerate the Xcode project using `xcgen` command.
+- Place this shell script in the project root directory alongside the XcodeGen manifest.
+- Fine-tune for your use case, e.g., remove GraphQL or SwiftGen related parts if you don't need them, or add those specific to your project.
+- Ensure the script is executable with `chmod +x .xcgen`.
+- Add `alias xcgen='./.xcgen'` to your `.zshrc` profile.
+- Run `xcgen bootstrap`.
+- After pulling new code from the repository, regenerate the Xcode project using the `xcgen` command.
 
 The `bootstrap` subcommand is geared towards preparing the development environment. It installs necessary tools, with a focus on Mint, which is then 
 used for installing and managing XcodeGen and other scripts crucial to the project generation pipeline.
 
-In this setup, we utilize the following scripts (should be defined defined in the Mintfile):
+In this setup, we utilize the following scripts (should be defined in the Mintfile):
 
 *   **xcodegen**: Generates the Xcode project file from the project specification (in JSON format).
 *   **xcgbootstrap**: Fetches Swift packages as defined in the XcodeGen project specification.
@@ -41,7 +40,7 @@ The `clean` subcommand can be used to wipe all the Xcode and SPM related caches.
 
 ---
 
-Make sure packages are proxied by local paths in your XcodeGen manifest, for example:
+Ensure packages are proxied by local paths in your XcodeGen manifest, for example:
 
 packages:
   local-swift-collections:
@@ -50,4 +49,4 @@ packages:
     url: https://github.com/apple/swift-collections.git
     version: 1.0.2
 
-The xcgbootstrap script automatically creates the Packages folder in the parent directory of your project directory. This method allows Xcode to accommodate local changes in packages, track these changes in its GUI, and launch much faster. As a result, the overall developer experience is significantly enhanced compared to when remote packages are used.
+The xcgbootstrap script automatically creates the `Packages` folder in the parent directory of your project directory. This setup allows Xcode to accommodate local changes in packages, track these changes in its GUI, and launch much faster. As a result, the overall developer experience is significantly enhanced compared to when remote packages are used.
