@@ -37,3 +37,4 @@ In this setup, we utilize the following scripts (should be defined defined in th
 The `fetch` subcommand updates the repositories of dependencies. This command should be used when the XcodeGen project specification is updated with 
 new version tags.
 
+The `clean` subcommand can be used to wipe all the Xcode and SPM related caches.
