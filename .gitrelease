@@ -1,0 +1,42 @@
+#!/bin/bash
+
+repoFromFolderName=$(pwd | sed 's#.*/##')
+
+git fetch
+currentVersion=$(git tag --sort=committerdate | tail -1)
+
+function incr_semver() { 
+    IFS='.' read -ra ver <<< "$1"
+    [[ "${#ver[@]}" -ne 3 ]] && echo "Invalid semver string" && return 1
+    [[ "$#" -eq 1 ]] && level='patch' || level=$2
+
+    patch=${ver[2]}
+    minor=${ver[1]}
+    major=${ver[0]}
+
+    case $level in
+        patch)
+            patch=$((patch+1))
+        ;;
+        minor)
+            patch=0
+            minor=$((minor+1))
+        ;;
+        major)
+            patch=0
+            minor=0
+            major=$((major+1))
+        ;;
+        *)
+            echo "Invalid level passed"
+            return 2
+    esac
+    echo "$major.$minor.$patch"
+}
+
+new_version_tag=$(incr_semver $currentVersion $1)
+
+git tag $new_version_tag
+git push alive $new_version_tag
+
+gh release create $new_version_tag --generate-notes --repo ivalx1s/${repoFromFolderName}
