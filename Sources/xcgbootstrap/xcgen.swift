@@ -40,7 +40,12 @@ enum ParseError: Error {
 struct ClonePackagesCLI: ParsableCommand {
 	
 	static let configuration = CommandConfiguration(
-		abstract: "A brief description of my command-line tool",
+		abstract: """
+The xcgbootstrap is a command-line utility that facilitates the initial setup of your xcodegen-powered projects.
+It streamlines your workflow by interpreting the project manifest, extracting project dependencies,
+and cloning these into the relevant directory alongside your main project.
+This tool also ensures you're working with the right dependency versions by checking out the corresponding version tags.
+""",
 		subcommands: [
 			ClonePackagesRecursively.self
 		]
@@ -50,7 +55,9 @@ struct ClonePackagesCLI: ParsableCommand {
 struct ClonePackagesRecursively: ParsableCommand {
 	static let configuration = CommandConfiguration(
 		commandName: "submodules",
-		abstract: "A brief description of submodules",
+		abstract: """
+The 'submodules' command triggers the setup process.
+""",
 		shouldDisplay: true
 	)
 	
@@ -93,7 +100,7 @@ struct ClonePackagesRecursively: ParsableCommand {
 				guard !checkedOutPackages.contains(remote) else {
 					continue
 				}
-				print("\nProcessing package: \(packageName)")
+				print("\n🔄 Processing package: \(packageName)")
 				
 				let repositoryName = remote.url!.split(separator: "/").last!
 				let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
@@ -110,20 +117,20 @@ struct ClonePackagesRecursively: ParsableCommand {
 				}
 				
 				// Fetch task
-				let pullTask = Process()
-				pullTask.launchPath = "/usr/bin/env"
-				pullTask.arguments = ["git", "fetch"]
-				pullTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
-				pullTask.standardOutput = FileHandle.nullDevice
-				pullTask.standardError = FileHandle.nullDevice
-				pullTask.launch()
-				pullTask.waitUntilExit()
+				let fetchTask = Process()
+				fetchTask.launchPath = "/usr/bin/env"
+				fetchTask.arguments = ["git", "fetch"]
+				fetchTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
+				fetchTask.standardOutput = FileHandle.nullDevice
+				fetchTask.standardError = FileHandle.nullDevice
+				fetchTask.launch()
+				fetchTask.waitUntilExit()
 				
 				// Check the termination status of the pull task
-				if pullTask.terminationStatus == 0 {
-					print("Successfully fetched latest changes from the repo")
+				if fetchTask.terminationStatus == 0 {
+					print("⤵️  Successfully fetched latest changes from the repo")
 				} else {
-					print("❗️Failed to fetch changes from \(remote.url!) for package \(packageName). Error \(pullTask.terminationStatus). Up-to-date state of the repo cannot be guranteed.")
+					print("❗️ Failed to fetch changes from \(remote.url!) for package \(packageName). Error \(fetchTask.terminationStatus). Up-to-date state of the repo cannot be guranteed.")
 				}
 				
 				let checkoutTask = Process()
@@ -135,9 +142,9 @@ struct ClonePackagesRecursively: ParsableCommand {
 				checkoutTask.launch()
 				checkoutTask.waitUntilExit()
 				if checkoutTask.terminationStatus == 0 {
-					print("Tag: \(remote.version!)")
+					print("#️⃣  Tag: \(remote.version!)")
 				} else {
-					print("❗️Could not checkout \(packageName), tag \(remote.version!). Check version tag and try again.")
+					print("❗️ Could not checkout \(packageName), tag \(remote.version!). Check version tag and try again.")
 				}
 				
 				
@@ -160,21 +167,40 @@ struct ClonePackagesRecursively: ParsableCommand {
 					.appendingPathComponent("Package.resolved")
 				
 				guard let pinsSerialized = try? Data(contentsOf: fileURL) else {
+					// package resolve always succeeds
+					// if we cannot read from disk
+					// that means there are no package dependencies
 					continue
 				}
 				
-				let packagePins = try decoder.decode(Pins.self, from: pinsSerialized)
-				let dependencies = extractDependencies(from: packagePins)
-				if !dependencies.isEmpty {
-					enriched = true
-					for dependency in dependencies {
-						let package = Remote(url: dependency.url, version: dependency.version)
-						remotePackages[dependency.name] = package
+				
+				print("🔂 Extracting \(packageName) dependencies")
+				if let packagePins = try? decoder.decode(PackageResolved.WithoutObjRoot.Pins.self, from: pinsSerialized) {
+					let dependencies = extractDependencies(from: packagePins)
+					if !dependencies.isEmpty {
+						enriched = true
+						for dependency in dependencies {
+							let package = Remote(url: dependency.url, version: dependency.version)
+							remotePackages[dependency.name] = package
+						}
 					}
+				} else if let packageObjs = try? decoder.decode(PackageResolved.WithObjRoot.Root.self, from: pinsSerialized) {
+					let dependencies = extractDependencies(from: packageObjs)
+					if !dependencies.isEmpty {
+						enriched = true
+						for dependency in dependencies {
+							let package = Remote(url: dependency.url, version: dependency.version)
+							remotePackages[dependency.name] = package
+						}
+					}
+				} else {
+					print("❗️ Could not deserialize Package.resolved, dependencies for \(packageName) have not been extracted")
+					continue
 				}
 			}
 			
 			if !enriched {
+				print("\n✅ Finished")
 				break
 			}
 		}
@@ -183,10 +209,17 @@ struct ClonePackagesRecursively: ParsableCommand {
 }
 
 
-func extractDependencies(from packageResolved: Pins) -> [Dependency] {
+func extractDependencies(from packageResolved: PackageResolved.WithoutObjRoot.Pins) -> [Dependency] {
 	packageResolved.pins.map {
 		// rethink approach, we have revisions in pins, which are more secure // 🟡
 		Dependency(name: $0.identity, url: $0.location, version: $0.state.version)
+	}
+}
+
+func extractDependencies(from packageResolved: PackageResolved.WithObjRoot.Root) -> [Dependency] {
+	packageResolved.object.pins.map {
+		// rethink approach, we have revisions in pins, which are more secure // 🟡
+		Dependency(name: $0.package, url: $0.repositoryURL, version: $0.state.version)
 	}
 }
 
