@@ -66,9 +66,19 @@ set -o pipefail
 
 trap 'echo "An error occurred. Exiting."; exit 1' ERR
 
-PROJECT_NAME="YOUR-PROJECT-NAME"
+PROJECT_NAME="Unitea"
 PROJECT_DIR=$PWD
 GRAPHQL_CODEGEN_CONFIG_DIR=$PROJECT_DIR/Autogen/Networking/GraphQL/apollo-codegen-config.json
+
+ # Check if homebrew is installed
+if ! command -v brew &> /dev/null
+then
+	echo "Homebrew is not installed on your system. It is required to bootstrap the project"
+	echo "Install Homebrew first and try again"
+	echo "Visit https://brew.sh or use this command:"
+	echo "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+	exit 1
+fi
 
 # Check if 'bootstrap' subcommand is passed
 if [[ $1 == "bootstrap" ]]; then
@@ -88,6 +98,8 @@ if [[ $1 == "bootstrap" ]]; then
     then
         # Install mint using homebrew
         brew install mint
+        echo 'export PATH="~/.mint/bin:$PATH"' >> ~/.zshrc
+        source ~/.zshrc
     fi
 
     # Run mint bootstrap
@@ -110,9 +122,8 @@ fi
 # Check if 'fetch' subcommand is passed
 if [[ $1 == "fetch" ]]; then
     # xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
-    echo "cloning dependencies..."
+    echo "⚙️ Cloning dependencies..."
     xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
-    echo "cloning dependencies..."
 fi
 
 if [[ $1 == "clean" ]]; then
@@ -120,17 +131,19 @@ if [[ $1 == "clean" ]]; then
     rm -rf ~/Library/org.swift.swiftpm
 	rm -rf ~/Library/Caches/org.swift.swiftpm
 	rm -rf ~/Library/Developer/Xcode/DerivedData
+	rm -rf ~/.xcodegen/cache/
 	echo "done"
 fi
 
-
+echo "⚙️ Generating Swift GraphQL files"
 apollo-ios-cli generate -p $GRAPHQL_CODEGEN_CONFIG_DIR
 
 # Use the full path of swiftgen,
 # we need this to overcome the bug where
 # swift executable cannot access its bundle
 # when launched from a symlink
+echo "⚙️ Generating Swift Wrappers for assets and localization"
 $SWIFTGEN_PATH config run --config "$PROJECT_DIR/Autogen/Assets/swiftgen.yml"
-xcodegen generate --spec $PROJECT_NAME.xcodeprojless
+xcodegen generate --spec $PROJECT_NAME.xcodeprojless --use-cache
 
 open $PROJECT_NAME.xcodeproj
