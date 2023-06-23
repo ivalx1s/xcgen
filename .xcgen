@@ -1,7 +1,5 @@
 #!/bin/zsh
 
-#!/bin/zsh
-
 # XCGEN – Automated Bootstrapping for XcodeGen-based Xcode Workflow
 #
 # This shell script streamlines the setup and maintenance of Xcode projects 
@@ -66,44 +64,41 @@ set -o pipefail
 
 trap 'echo "An error occurred. Exiting."; exit 1' ERR
 
-PROJECT_NAME="YourProjectName"
+PROJECT_NAME="YOUR-PROJECT-NAME"
 PROJECT_DIR=$PWD
 GRAPHQL_CODEGEN_CONFIG_DIR=$PROJECT_DIR/Autogen/Networking/GraphQL/apollo-codegen-config.json
 
- # Check if homebrew is installed
-if ! command -v brew &> /dev/null
-then
+# Check if homebrew is installed
+if ! command -v brew &> /dev/null then
 	echo "Homebrew is not installed on your system. It is required to bootstrap the project"
 	echo "Install Homebrew first and try again"
 	echo "Visit https://brew.sh or use this command:"
 	echo "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
 	exit 1
 fi
+export PATH="/opt/homebrew/bin:$PATH"
+
+# Check if realpath is available
+if ! command -v realpath &> /dev/null then
+    echo "'realpath' command is not available on your system. It is required for resolving symlinks"
+    echo "Install 'coreutils' via Homebrew first and try again"
+    echo "Use this command:"
+    echo "brew install coreutils"
+    exit 1
+fi
+
+# Check if mint is installed
+if ! command -v mint &> /dev/null then
+	# Install mint using homebrew
+	brew install mint
+fi
+export PATH="$HOME/.mint/bin:$PATH"
 
 # Check if 'bootstrap' subcommand is passed
 if [[ $1 == "bootstrap" ]]; then
-
-    # Check if homebrew is installed
-    if ! command -v brew &> /dev/null
-    then
-        echo "Homebrew is not installed on your system. It is required to bootstrap the project"
-        echo "Install Homebrew first and try again"
-        echo "Visit https://brew.sh or use this command:"
-        echo "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-        exit 1
-    fi
-
-    # Check if mint is installed
-    if ! command -v mint &> /dev/null
-    then
-        # Install mint using homebrew
-        brew install mint
-        echo 'export PATH="~/.mint/bin:$PATH"' >> ~/.zshrc
-        source ~/.zshrc
-    fi
-
     # Run mint bootstrap
     mint bootstrap --link
+    xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
 fi
 
 # Assuming swiftgen is in the PATH, find its symlink.
@@ -126,14 +121,28 @@ if [[ $1 == "fetch" ]]; then
     xcgbootstrap submodules $PROJECT_NAME.xcodeprojless
 fi
 
-if [[ $1 == "clean" ]]; then
-    echo "cleaning Xcode and SPM caches..."
+if [[ $1 == "cleanall" ]]; then
+    echo "⚙️ Cleaning Xcode, SPM and Xcodegen caches..."
     rm -rf ~/Library/org.swift.swiftpm
 	rm -rf ~/Library/Caches/org.swift.swiftpm
 	rm -rf ~/Library/Developer/Xcode/DerivedData
 	rm -rf ~/.xcodegen/cache/
-	echo "done"
+	echo "✅ Done"
 fi
+
+if [[ $1 == "cleandd" ]]; then
+    echo "⚙️ Cleaning Xcode caches..."
+	rm -rf ~/Library/Developer/Xcode/DerivedData
+	echo "✅ Done"
+fi
+
+if [[ $1 == "cleanspm" ]]; then
+    echo "⚙️ Cleaning SPM caches..."
+	rm -rf ~/Library/org.swift.swiftpm
+	rm -rf ~/Library/Caches/org.swift.swiftpm
+	echo "✅ Done"
+fi
+
 
 echo "⚙️ Generating Swift GraphQL files"
 apollo-ios-cli generate -p $GRAPHQL_CODEGEN_CONFIG_DIR
@@ -144,6 +153,6 @@ apollo-ios-cli generate -p $GRAPHQL_CODEGEN_CONFIG_DIR
 # when launched from a symlink
 echo "⚙️ Generating Swift Wrappers for assets and localization"
 $SWIFTGEN_PATH config run --config "$PROJECT_DIR/Autogen/Assets/swiftgen.yml"
-xcodegen generate --spec $PROJECT_NAME.xcodeprojless --use-cache
+xcodegen generate --spec $PROJECT_NAME.xcodeprojless
 
 open $PROJECT_NAME.xcodeproj
