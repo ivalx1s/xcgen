@@ -11,6 +11,10 @@
     "remote-darwin-perdux": {
       "url": "git@github.com:ivalx1s/darwin-perdux.git",
       "version": "3.5.0"
-    }
+    },
+        "remote-darwin-relux": {
+            "url": "https://github.com/ivalx1s/darwin-relux",
+            "version": "5.1.0"
+        }
   }
 }
