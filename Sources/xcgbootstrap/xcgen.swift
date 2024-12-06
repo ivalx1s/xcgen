@@ -51,7 +51,7 @@ struct ClonePackagesCLI: ParsableCommand {
     )
 }
 
-struct ClonePackagesRecursively: ParsableCommand {
+struct ClonePackagesRecursively: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "submodules",
         abstract: """
