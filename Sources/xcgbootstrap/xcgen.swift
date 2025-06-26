@@ -73,43 +73,47 @@ The 'submodules' command triggers the setup process.
         let fileURL = URL(fileURLWithPath: currentDirectoryURL).appendingPathComponent(jsonFilePath)
         let data = try Data(contentsOf: fileURL)
         
-        var packageList: PackageList?
+        let packageList: PackageList
         do {
-            packageList = try decoder.decode(PackageList.self, from: Data(contentsOf: fileURL))
+            packageList = try decoder.decode(PackageList.self, from: data)
         } catch {
             throw ParseError.cannotDecodePackageList
         }
         
-        guard let packageList else {
-            throw ParseError.packageListHasntBeenDecoded
-        }
-        
-        var remotePackages = packageList.packages
+        var remotePackages: [String : Remote] = packageList.packages
             .filter {
                 $0.value.path == nil &&
                 $0.value.url != nil &&
                 $0.value.version != nil
             }
         
+        let packagesDirPath = fileManager.currentDirectoryPath
+            .appending("/\(Self.repositoryBasePath)")
+        try? fileManager.createDirectory(atPath: packagesDirPath,
+                                         withIntermediateDirectories: true)
+        
         var checkedOutPackages: Set<Remote> = []
         
         while true {
-            var enriched = false
+            let worklist = remotePackages            // snapshot for safe iteration
+            var newlyDiscovered: [String: Remote] = [:]  // collect inserts
             
-            for var (packageName, remote) in remotePackages {
-                guard !checkedOutPackages.contains(remote) else {
-                    continue
-                }
+            for (packageName, remote) in worklist {
+                guard !checkedOutPackages.contains(remote),
+                      let url = remote.url,
+                      let version = remote.version else { continue }
+                
                 print("\n🔄 Processing package: \(packageName)")
                 
-                let repositoryName = remote.url!.split(separator: "/").last!
+                let repositoryName = url.split(separator: "/").last!
                 let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
+                let repositorySupposedPath = fileManager.currentDirectoryPath
+                    .appending("/\(Self.repositoryBasePath)/\(folderName)")
                 
-                let repositorySupposedPath = fileManager.currentDirectoryPath.appending("/\(Self.repositoryBasePath)/\(folderName)")
                 if !fileManager.fileExists(atPath: repositorySupposedPath) {
                     let cloneTask = Process()
                     cloneTask.launchPath = "/usr/bin/env"
-                    cloneTask.arguments = ["git", "clone", remote.url!, "\(Self.repositoryBasePath)/\(folderName)"]
+                    cloneTask.arguments = ["git", "clone", url, "\(Self.repositoryBasePath)/\(folderName)"]
                     cloneTask.standardOutput = FileHandle.nullDevice
                     cloneTask.standardError = FileHandle.nullDevice
                     cloneTask.launch()
@@ -126,29 +130,29 @@ The 'submodules' command triggers the setup process.
                 fetchTask.launch()
                 fetchTask.waitUntilExit()
                 
-                // Check the termination status of the pull task
                 if fetchTask.terminationStatus == 0 {
                     print("⤵️  Successfully fetched latest changes from the repo")
                 } else {
-                    print("❗️ Failed to fetch changes from \(remote.url!) for package \(packageName). Error \(fetchTask.terminationStatus). Up-to-date state of the repo cannot be guranteed.")
+                    print("❗️ Failed to fetch changes from \(url) for package \(packageName). Error \(fetchTask.terminationStatus). Up-to-date state of the repo cannot be guaranteed.")
                 }
                 
+                // Checkout task
                 let checkoutTask = Process()
                 checkoutTask.launchPath = "/usr/bin/env"
-                checkoutTask.arguments = ["git", "checkout", remote.version!]
+                checkoutTask.arguments = ["git", "checkout", version]
                 checkoutTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
                 checkoutTask.standardOutput = FileHandle.nullDevice
                 checkoutTask.standardError = FileHandle.nullDevice
                 checkoutTask.launch()
                 checkoutTask.waitUntilExit()
+                
                 if checkoutTask.terminationStatus == 0 {
-                    print("#️⃣  Tag: \(remote.version!)")
+                    print("#️⃣  Tag: \(version)")
                 } else {
-                    print("❗️ Could not checkout \(packageName), tag \(remote.version!). Check version tag and try again.")
+                    print("❗️ Could not checkout \(packageName), tag \(version). Check version tag and try again.")
                 }
                 
-                
-                
+                // Resolve task
                 let packageResolveTask = Process()
                 packageResolveTask.launchPath = "/usr/bin/env"
                 packageResolveTask.arguments = ["swift", "package", "resolve"]
@@ -160,49 +164,34 @@ The 'submodules' command triggers the setup process.
                 
                 checkedOutPackages.insert(remote)
                 
-                let currentDirectoryURL = fileManager.currentDirectoryPath
-                let fileURL = URL(fileURLWithPath: currentDirectoryURL)
-                    .appendingPathComponent(Self.repositoryBasePath)
-                    .appendingPathComponent("\(folderName)")
+                let pinsURL = URL(fileURLWithPath: repositorySupposedPath)
                     .appendingPathComponent("Package.resolved")
                 
-                guard let pinsSerialized = try? Data(contentsOf: fileURL) else {
-                    // package resolve always succeeds
-                    // if we cannot read from disk
-                    // that means there are no package dependencies
-                    continue
-                }
-                
+                guard let pinsSerialized = try? Data(contentsOf: pinsURL) else { continue }
                 
                 print("🔂 Extracting \(packageName) dependencies")
-                if let packagePins = try? decoder.decode(PackageResolved.WithoutObjRoot.Pins.self, from: pinsSerialized) {
-                    let dependencies = extractDependencies(from: packagePins)
-                    if !dependencies.isEmpty {
-                        enriched = true
-                        for dependency in dependencies {
-                            let package = Remote(url: dependency.url, version: dependency.version)
-                            remotePackages[dependency.name] = package
-                        }
-                    }
-                } else if let packageObjs = try? decoder.decode(PackageResolved.WithObjRoot.Root.self, from: pinsSerialized) {
-                    let dependencies = extractDependencies(from: packageObjs)
-                    if !dependencies.isEmpty {
-                        enriched = true
-                        for dependency in dependencies {
-                            let package = Remote(url: dependency.url, version: dependency.version)
-                            remotePackages[dependency.name] = package
-                        }
-                    }
+                
+                let addDependency: (Dependency) -> Void = { dep in
+                    newlyDiscovered[dep.name] = Remote(url: dep.url, version: dep.version)
+                }
+                
+                if let packagePins = try? decoder.decode(PackageResolved.WithoutObjRoot.Pins.self,
+                                                         from: pinsSerialized) {
+                    extractDependencies(from: packagePins).forEach(addDependency)
+                } else if let packageObjs = try? decoder.decode(PackageResolved.WithObjRoot.Root.self,
+                                                                from: pinsSerialized) {
+                    extractDependencies(from: packageObjs).forEach(addDependency)
                 } else {
                     print("❗️ Could not deserialize Package.resolved, dependencies for \(packageName) have not been extracted")
-                    continue
                 }
             }
             
-            if !enriched {
+            if newlyDiscovered.isEmpty {
                 print("\n✅ Finished")
                 break
             }
+            
+            remotePackages.merge(newlyDiscovered) { _, new in new }
         }
     }
     
