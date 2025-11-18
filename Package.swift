@@ -11,7 +11,7 @@ let package = Package(
 		.executable(name: "xcgbootstrap", targets: ["xcgbootstrap"])
 	],
     dependencies: [
-         .package(url: "git@github.com:apple/swift-argument-parser.git", from: "1.5.0"),
+         .package(url: "git@github.com:apple/swift-argument-parser.git", from: "1.6.2"),
     ],
     targets: [
         .executableTarget(
