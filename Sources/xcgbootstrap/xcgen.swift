@@ -61,10 +61,11 @@ The 'submodules' command triggers the setup process.
         shouldDisplay: true
     )
     
-    static let repositoryBasePath = "../Packages"
-    
     @Argument(help: "Path to the json file containing information about packages")
     var jsonFilePath: String
+    
+    @Argument(help: "Path where repositories should be cloned")
+    var repositoryBasePath: String
     
     func run() throws {
         let fileManager = FileManager.default
@@ -87,8 +88,14 @@ The 'submodules' command triggers the setup process.
                 $0.value.version != nil
             }
         
-        let packagesDirPath = fileManager.currentDirectoryPath
-            .appending("/\(Self.repositoryBasePath)")
+        let baseRepositoryURL: URL
+        if repositoryBasePath.hasPrefix("/") {
+            baseRepositoryURL = URL(fileURLWithPath: repositoryBasePath)
+        } else {
+            baseRepositoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+                .appendingPathComponent(repositoryBasePath)
+        }
+        let packagesDirPath = baseRepositoryURL.path
         try? fileManager.createDirectory(atPath: packagesDirPath,
                                          withIntermediateDirectories: true)
         
@@ -107,13 +114,23 @@ The 'submodules' command triggers the setup process.
                 
                 let repositoryName = url.split(separator: "/").last!
                 let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
-                let repositorySupposedPath = fileManager.currentDirectoryPath
-                    .appending("/\(Self.repositoryBasePath)/\(folderName)")
+                let repositorySupposedPath = baseRepositoryURL
+                    .appendingPathComponent(folderName)
+                    .path
                 
                 if !fileManager.fileExists(atPath: repositorySupposedPath) {
                     let cloneTask = Process()
                     cloneTask.launchPath = "/usr/bin/env"
-                    cloneTask.arguments = ["git", "clone", url, "\(Self.repositoryBasePath)/\(folderName)"]
+                    cloneTask.arguments = [
+                        "git",
+                        "clone",
+                        "--branch", version,
+                        "--single-branch",
+                        "--depth", "1",
+                        "--no-tags",
+                        url,
+                        repositorySupposedPath
+                    ]
                     cloneTask.standardOutput = FileHandle.nullDevice
                     cloneTask.standardError = FileHandle.nullDevice
                     cloneTask.launch()
@@ -123,8 +140,16 @@ The 'submodules' command triggers the setup process.
                 // Fetch task
                 let fetchTask = Process()
                 fetchTask.launchPath = "/usr/bin/env"
-                fetchTask.arguments = ["git", "fetch"]
-                fetchTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
+                fetchTask.arguments = [
+                    "git",
+                    "fetch",
+                    "--depth", "1",
+                    "--no-tags",
+                    "origin",
+                    "tag",
+                    version
+                ]
+                fetchTask.currentDirectoryPath = repositorySupposedPath
                 fetchTask.standardOutput = FileHandle.nullDevice
                 fetchTask.standardError = FileHandle.nullDevice
                 fetchTask.launch()
@@ -140,7 +165,7 @@ The 'submodules' command triggers the setup process.
                 let checkoutTask = Process()
                 checkoutTask.launchPath = "/usr/bin/env"
                 checkoutTask.arguments = ["git", "checkout", version]
-                checkoutTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
+                checkoutTask.currentDirectoryPath = repositorySupposedPath
                 checkoutTask.standardOutput = FileHandle.nullDevice
                 checkoutTask.standardError = FileHandle.nullDevice
                 checkoutTask.launch()
@@ -156,7 +181,7 @@ The 'submodules' command triggers the setup process.
                 let packageResolveTask = Process()
                 packageResolveTask.launchPath = "/usr/bin/env"
                 packageResolveTask.arguments = ["swift", "package", "resolve"]
-                packageResolveTask.currentDirectoryPath = "\(Self.repositoryBasePath)/\(folderName)"
+                packageResolveTask.currentDirectoryPath = repositorySupposedPath
                 packageResolveTask.standardOutput = FileHandle.nullDevice
                 packageResolveTask.standardError = FileHandle.nullDevice
                 packageResolveTask.launch()
