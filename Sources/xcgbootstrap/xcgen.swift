@@ -67,11 +67,15 @@ The 'submodules' command triggers the setup process.
     @Argument(help: "Path where repositories should be cloned")
     var repositoryBasePath: String
     
+    @Option(name: .long, help: "File path for the generated dependency graph (GraphViz DOT format)")
+    var dependencyGraphOutput: String?
+    
     func run() throws {
         let fileManager = FileManager.default
         let decoder = JSONDecoder()
         let currentDirectoryURL = fileManager.currentDirectoryPath
         let fileURL = URL(fileURLWithPath: currentDirectoryURL).appendingPathComponent(jsonFilePath)
+        let projectNodeName = fileURL.deletingPathExtension().lastPathComponent
         let data = try Data(contentsOf: fileURL)
         
         let packageList: PackageList
@@ -87,6 +91,20 @@ The 'submodules' command triggers the setup process.
                 $0.value.url != nil &&
                 $0.value.version != nil
             }
+        var dependencyGraph: [String: Set<String>] = [:]
+        func ensureNodeExists(_ name: String) {
+            if dependencyGraph[name] == nil {
+                dependencyGraph[name] = []
+            }
+        }
+        func addEdge(from parent: String, to child: String) {
+            ensureNodeExists(parent)
+            ensureNodeExists(child)
+            dependencyGraph[parent, default: []].insert(child)
+        }
+
+        ensureNodeExists(projectNodeName)
+        remotePackages.keys.forEach { addEdge(from: projectNodeName, to: $0) }
         
         let baseRepositoryURL: URL
         if repositoryBasePath.hasPrefix("/") {
@@ -97,6 +115,19 @@ The 'submodules' command triggers the setup process.
         }
         let packagesDirPath = baseRepositoryURL.path
         try? fileManager.createDirectory(atPath: packagesDirPath,
+                                         withIntermediateDirectories: true)
+        let dependencyGraphOutputURL: URL
+        if let dependencyGraphOutput, !dependencyGraphOutput.isEmpty {
+            if dependencyGraphOutput.hasPrefix("/") {
+                dependencyGraphOutputURL = URL(fileURLWithPath: dependencyGraphOutput)
+            } else {
+                dependencyGraphOutputURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+                    .appendingPathComponent(dependencyGraphOutput)
+            }
+        } else {
+            dependencyGraphOutputURL = baseRepositoryURL.appendingPathComponent("dependency-graph.dot")
+        }
+        try? fileManager.createDirectory(atPath: dependencyGraphOutputURL.deletingLastPathComponent().path,
                                          withIntermediateDirectories: true)
         
         var checkedOutPackages: Set<Remote> = []
@@ -111,6 +142,7 @@ The 'submodules' command triggers the setup process.
                       let version = remote.version else { continue }
                 
                 print("\n🔄 Processing package: \(packageName)")
+                ensureNodeExists(packageName)
                 
                 let repositoryName = url.split(separator: "/").last!
                 let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
@@ -198,6 +230,7 @@ The 'submodules' command triggers the setup process.
                 
                 let addDependency: (Dependency) -> Void = { dep in
                     newlyDiscovered[dep.name] = Remote(url: dep.url, version: dep.version)
+                    addEdge(from: packageName, to: dep.name)
                 }
                 
                 if let packagePins = try? decoder.decode(PackageResolved.WithoutObjRoot.Pins.self,
@@ -218,8 +251,45 @@ The 'submodules' command triggers the setup process.
             
             remotePackages.merge(newlyDiscovered) { _, new in new }
         }
+        try writeDependencyGraph(adjacencyList: dependencyGraph,
+                                 outputURL: dependencyGraphOutputURL)
+        print("🧩 Dependency graph saved to \(dependencyGraphOutputURL.path)")
     }
     
+}
+
+
+func writeDependencyGraph(adjacencyList: [String: Set<String>], outputURL: URL) throws {
+    var dotRepresentation = "digraph Dependencies {\n"
+    dotRepresentation.append("    rankdir=LR;\n")
+    dotRepresentation.append("    node [shape=box];\n")
+    let sortedParents = adjacencyList.keys.sorted()
+    var allNodes: Set<String> = Set(adjacencyList.keys)
+    adjacencyList.values.forEach { allNodes.formUnion($0) }
+    for parent in sortedParents {
+        let children = adjacencyList[parent] ?? []
+        for child in children.sorted() {
+            dotRepresentation.append("    \(dotEdge(from: parent, to: child))\n")
+        }
+    }
+    let leafNodes = allNodes.filter { adjacencyList[$0]?.isEmpty ?? true }
+    for node in leafNodes.sorted() {
+        dotRepresentation.append("    \(dotNodeDeclaration(node))\n")
+    }
+    dotRepresentation.append("}\n")
+    try dotRepresentation.write(to: outputURL, atomically: true, encoding: .utf8)
+}
+
+func dotEdge(from parent: String, to child: String) -> String {
+    "\(dotIdentifier(parent)) -> \(dotIdentifier(child));"
+}
+
+func dotNodeDeclaration(_ value: String) -> String {
+    "\(dotIdentifier(value));"
+}
+
+func dotIdentifier(_ value: String) -> String {
+    "\"\(value.replacingOccurrences(of: "\"", with: "\\\""))\""
 }
 
 
