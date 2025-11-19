@@ -23,8 +23,10 @@ Please note that this project is a work in progress. The code is in a messy stat
 
 This helper utility is intended to be used when all dependencies are managed through the Swift Package Manager.
 
+By default repositories are cloned next to your project inside a branch-specific folder named `./.packages-<branch-name>` (for example `./.packages-main`). Pass a custom second argument if you need to override that path.
+
 ```bash
-swift run xcgen fetch debug_xcodegen_project_spec.json ../Packages \
+swift run xcgen fetch debug_xcodegen_project_spec.json \
   --dependency-graph-output ./.packages-main/dependency-graph.dot
 ```
 
