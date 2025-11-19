@@ -10,12 +10,11 @@ The goal of this script is to simplify the process of managing an Xcodegen-power
 
 🚧 Work In Progress
 
-Please note that this project is a work in progress. The code is in a messy state. There are still many features to be added, such as injecting paths to local packages into the project spec to proxy remote packages.
+Please note that this project is still evolving, but it already manages much more than simply invoking XcodeGen:
 
-✴️Todo:
-
-- Inject paths to fetched local packages in project spec to proxy remote packages.
-- Support YAML-based project spec
+- Recursively fetches SwiftPM dependencies and checks out their exact tags via `xcgen fetch`, updating the manifest with local overrides so you can work against your cloned packages.
+- Keeps per-branch checkouts in sync when using Git worktrees by copying `.packages-<branch>` folders and relinking `.packages` through `xcgen worktree add`, `xcgen worktree post-checkout`, and the hook installed by `xcgen install-hooks`.
+- Provides cleanup helpers such as `xcgen clean all|dd|spm|xc` to remove DerivedData, SwiftPM, and XcodeGen caches when things get messy.
 
 ---
 
