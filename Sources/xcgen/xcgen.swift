@@ -37,26 +37,27 @@ enum ParseError: Error {
 }
 
 @main
-struct ClonePackagesCLI: ParsableCommand {
+struct XCGenCLI: ParsableCommand {
     
     static let configuration = CommandConfiguration(
+        commandName: "xcgen",
         abstract: """
-The xcgbootstrap is a command-line utility that facilitates the initial setup of your xcodegen-powered projects.
+XCGen is a command-line utility that facilitates the initial setup of your xcodegen-powered projects.
 It streamlines your workflow by interpreting the project manifest, extracting project dependencies,
 and cloning these into the relevant directory alongside your main project.
 This tool also ensures you're working with the right dependency versions by checking out the corresponding version tags.
 """,
         subcommands: [
-            ClonePackagesRecursively.self
+            FetchDependencies.self
         ]
     )
 }
 
-struct ClonePackagesRecursively: ParsableCommand {
+struct FetchDependencies: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "submodules",
+        commandName: "fetch",
         abstract: """
-The 'submodules' command triggers the setup process.
+Fetch resolves and syncs all Swift package dependencies declared in your manifest (and their transitive dependencies).
 """,
         shouldDisplay: true
     )
@@ -179,6 +180,14 @@ The 'submodules' command triggers the setup process.
                     cloneTask.standardError = FileHandle.nullDevice
                     cloneTask.launch()
                     cloneTask.waitUntilExit()
+                    if cloneTask.terminationStatus != 0 {
+                        print("❗️ Failed to clone \(repoName) from \(url). Skipping further steps for this dependency.")
+                        continue
+                    }
+                }
+                guard fileManager.fileExists(atPath: repositorySupposedPath) else {
+                    print("❗️ Expected repository at \(repositorySupposedPath) but it is missing. Skipping \(repoName).")
+                    continue
                 }
                 
                 // Fetch task

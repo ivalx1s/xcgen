@@ -24,7 +24,8 @@ Please note that this project is a work in progress. The code is in a messy stat
 This helper utility is intended to be used when all dependencies are managed through the Swift Package Manager.
 
 ```bash
-swift run xcgen submodules debug_xcodegen_project_spec.json
+swift run xcgen fetch debug_xcodegen_project_spec.json ../Packages \
+  --dependency-graph-output ./.packages-main/dependency-graph.dot
 ```
 
 
