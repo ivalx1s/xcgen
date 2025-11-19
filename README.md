@@ -57,6 +57,18 @@ USAGE: xcgen fetch <json-file-path> [<repository-base-path>] [--dependency-graph
 - The optional `--dependency-graph-output` defaults to `<base>/dependency-graph.dot`.
 - After a successful fetch it writes `local-<package>` entries (e.g. `local-swift-algorithms`) back to the manifest pointing at `.packages/<package>/` for every resolved dependency, skipping ones that already exist.
 
+### `xcgen clean`
+
+```
+USAGE: xcgen clean <target>
+```
+
+- `all` – Removes DerivedData, SwiftPM’s caches/configuration, Xcode’s cache directory, and the XcodeGen cache at `~/.xcodegen/cache`.
+- `dd` – Removes `~/Library/Developer/Xcode/DerivedData` only.
+- `spm` – Removes SwiftPM caches (`~/Library/org.swift.swiftpm` and `~/Library/Caches/org.swift.swiftpm`).
+- `xc` – Removes DerivedData plus `~/Library/Caches/com.apple.dt.Xcode`.
+- Example: `xcgen clean dd` or `xcgen clean all` when you need a full reset.
+
 ### `xcgen install-hooks`
 
 ```

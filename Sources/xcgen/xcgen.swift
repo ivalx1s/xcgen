@@ -56,6 +56,7 @@ USAGE MODES:
             FetchDependencies.self,
             Worktree.self,
             InstallHooks.self,
+            CleanCaches.self,
             GenerateProject.self
         ],
         defaultSubcommand: GenerateProject.self
