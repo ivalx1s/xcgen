@@ -55,6 +55,7 @@ USAGE: xcgen fetch <json-file-path> [<repository-base-path>] [--dependency-graph
 - Reads your manifest JSON and recursively clones all SwiftPM dependencies.
 - Default base path is `./.packages-<branch>`, where `feature/my-task` becomes `./.packages-feature__my-task` (`Sources/xcgen/GitHelpers.swift` holds the sanitizer and the main/master exception).
 - The optional `--dependency-graph-output` defaults to `<base>/dependency-graph.dot`.
+- After a successful fetch it writes `local-<package>` entries (e.g. `local-swift-algorithms`) back to the manifest pointing at `.packages/<package>/` for every resolved dependency, skipping ones that already exist.
 
 ### `xcgen install-hooks`
 
