@@ -48,7 +48,9 @@ and cloning these into the relevant directory alongside your main project.
 This tool also ensures you're working with the right dependency versions by checking out the corresponding version tags.
 """,
         subcommands: [
-            FetchDependencies.self
+            FetchDependencies.self,
+            Worktree.self,
+            InstallHooks.self
         ]
     )
 }
@@ -321,25 +323,9 @@ OPTIONS:
 
 extension FetchDependencies {
     static func defaultRepositoryBasePath() -> String {
-        let branchName = currentGitBranchName() ?? "HEAD"
-        return "./.packages-\(branchName)"
-    }
-    
-    private static func currentGitBranchName() -> String? {
-        let branchProcess = Process()
-        branchProcess.launchPath = "/usr/bin/env"
-        branchProcess.arguments = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-        branchProcess.currentDirectoryPath = FileManager.default.currentDirectoryPath
-        let outputPipe = Pipe()
-        branchProcess.standardOutput = outputPipe
-        branchProcess.standardError = FileHandle.nullDevice
-        branchProcess.launch()
-        branchProcess.waitUntilExit()
-        guard branchProcess.terminationStatus == 0 else { return nil }
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let branch = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !branch.isEmpty else { return nil }
-        return branch
+        let branchName = (try? Git.currentBranch()) ?? "HEAD"
+        let directoryName = BranchNaming.packagesDirectoryName(for: branchName)
+        return "./\(directoryName)"
     }
 }
 
