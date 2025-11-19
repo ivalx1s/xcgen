@@ -47,12 +47,28 @@ It streamlines your workflow by interpreting the project manifest, extracting pr
 and cloning these into the relevant directory alongside your main project.
 This tool also ensures you're working with the right dependency versions by checking out the corresponding version tags.
 """,
+        discussion: """
+USAGE MODES:
+  • `xcgen <project.yml>` runs XcodeGen against that manifest.
+  • `xcgen <subcommand> ...` triggers one of the utilities below (omit the manifest path when using subcommands).
+""",
         subcommands: [
             FetchDependencies.self,
             Worktree.self,
             InstallHooks.self
         ]
     )
+    
+    @Argument(help: "Path to your XcodeGen project manifest (e.g. project.yml).",
+              completion: .file())
+    var projectManifestPath: String?
+    
+    func run() throws {
+        guard let projectManifestPath else {
+            throw CleanExit.message("Provide a path to the XcodeGen manifest or run a subcommand. See `xcgen --help`.")
+        }
+        try XcodegenRunner.generateProject(specPath: projectManifestPath)
+    }
 }
 
 struct FetchDependencies: ParsableCommand {

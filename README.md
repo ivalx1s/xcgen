@@ -23,6 +23,20 @@ Please note that this project is a work in progress. The code is in a messy stat
 
 This helper utility is intended to be used when all dependencies are managed through the Swift Package Manager.
 
+### Generate a project (default command)
+
+Running `xcgen` without a subcommand proxies to XcodeGen:
+
+```bash
+xcgen project.yml
+# or from the SwiftPM checkout
+swift run xcgen project.yml
+```
+
+`xcgen` locates `project.yml` (or any custom spec you pass) and executes `xcodegen --spec <path>` inside that directory. Make sure the [XcodeGen](https://github.com/yonaskolb/XcodeGen) CLI is installed and accessible on your `PATH`.
+
+> ℹ️ Subcommands (`fetch`, `worktree`, etc.) are mutually exclusive with the manifest argument. When you want to run a subcommand, omit the manifest path entirely (e.g. `xcgen fetch ...`).
+
 By default repositories are cloned next to your project inside a branch-specific folder named `./.packages-<branch-name>` (for example `./.packages-main`). The `<branch-name>` segment is sanitized (`feature/my-task` becomes `feature__my-task`). Pass a custom second argument if you need to override that path.
 
 ```bash
