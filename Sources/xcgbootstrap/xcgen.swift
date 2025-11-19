@@ -85,12 +85,7 @@ The 'submodules' command triggers the setup process.
             throw ParseError.cannotDecodePackageList
         }
         
-        var remotePackages: [String : Remote] = packageList.packages
-            .filter {
-                $0.value.path == nil &&
-                $0.value.url != nil &&
-                $0.value.version != nil
-            }
+        var remotePackages: [String: Remote] = [:]
         var dependencyGraph: [String: Set<String>] = [:]
         func ensureNodeExists(_ name: String) {
             if dependencyGraph[name] == nil {
@@ -102,9 +97,27 @@ The 'submodules' command triggers the setup process.
             ensureNodeExists(child)
             dependencyGraph[parent, default: []].insert(child)
         }
-
         ensureNodeExists(projectNodeName)
-        remotePackages.keys.forEach { addEdge(from: projectNodeName, to: $0) }
+        var versionTracker = DependencyVersionTracker()
+        func logConflict(for node: String) {
+            guard let versions = versionTracker.requirements[node] else { return }
+            let versionList = versions.keys.sorted().joined(separator: ", ")
+            print("⚠️ Potential dependency conflict for \(node): versions [\(versionList)]")
+        }
+        for (_, remote) in packageList.packages {
+            guard remote.path == nil,
+                  let url = remote.url,
+                  let version = remote.version else { continue }
+            let repoName = repositoryName(from: url)
+            ensureNodeExists(repoName)
+            addEdge(from: projectNodeName, to: repoName)
+            if versionTracker.record(version: version, for: repoName, source: projectNodeName) {
+                logConflict(for: repoName)
+            }
+            if remotePackages[repoName] == nil {
+                remotePackages[repoName] = Remote(url: url, version: version)
+            }
+        }
         
         let baseRepositoryURL: URL
         if repositoryBasePath.hasPrefix("/") {
@@ -130,22 +143,21 @@ The 'submodules' command triggers the setup process.
         try? fileManager.createDirectory(atPath: dependencyGraphOutputURL.deletingLastPathComponent().path,
                                          withIntermediateDirectories: true)
         
-        var checkedOutPackages: Set<Remote> = []
+        var checkedOutPackages: Set<String> = []
         
         while true {
             let worklist = remotePackages            // snapshot for safe iteration
             var newlyDiscovered: [String: Remote] = [:]  // collect inserts
             
-            for (packageName, remote) in worklist {
-                guard !checkedOutPackages.contains(remote),
+            for (repoName, remote) in worklist {
+                guard !checkedOutPackages.contains(repoName),
                       let url = remote.url,
                       let version = remote.version else { continue }
                 
-                print("\n🔄 Processing package: \(packageName)")
-                ensureNodeExists(packageName)
+                print("\n🔄 Processing package: \(repoName)")
+                ensureNodeExists(repoName)
                 
-                let repositoryName = url.split(separator: "/").last!
-                let folderName = repositoryName.replacingOccurrences(of: ".git", with: "")
+                let folderName = repositoryName(from: url)
                 let repositorySupposedPath = baseRepositoryURL
                     .appendingPathComponent(folderName)
                     .path
@@ -188,9 +200,9 @@ The 'submodules' command triggers the setup process.
                 fetchTask.waitUntilExit()
                 
                 if fetchTask.terminationStatus == 0 {
-                    print("⤵️  Successfully fetched latest changes from the repo")
+                    print("⤵️ Successfully fetched latest changes from the repo")
                 } else {
-                    print("❗️ Failed to fetch changes from \(url) for package \(packageName). Error \(fetchTask.terminationStatus). Up-to-date state of the repo cannot be guaranteed.")
+                    print("❗️ Failed to fetch changes from \(url) for package \(repoName). Error \(fetchTask.terminationStatus). Up-to-date state of the repo cannot be guaranteed.")
                 }
                 
                 // Checkout task
@@ -206,7 +218,7 @@ The 'submodules' command triggers the setup process.
                 if checkoutTask.terminationStatus == 0 {
                     print("#️⃣  Tag: \(version)")
                 } else {
-                    print("❗️ Could not checkout \(packageName), tag \(version). Check version tag and try again.")
+                    print("❗️ Could not checkout \(repoName), tag \(version). Check version tag and try again.")
                 }
                 
                 // Resolve task
@@ -219,18 +231,24 @@ The 'submodules' command triggers the setup process.
                 packageResolveTask.launch()
                 packageResolveTask.waitUntilExit()
                 
-                checkedOutPackages.insert(remote)
+                checkedOutPackages.insert(repoName)
                 
                 let pinsURL = URL(fileURLWithPath: repositorySupposedPath)
                     .appendingPathComponent("Package.resolved")
                 
                 guard let pinsSerialized = try? Data(contentsOf: pinsURL) else { continue }
                 
-                print("🔂 Extracting \(packageName) dependencies")
+                print("🔂 Extracting \(repoName) dependencies")
                 
                 let addDependency: (Dependency) -> Void = { dep in
-                    newlyDiscovered[dep.name] = Remote(url: dep.url, version: dep.version)
-                    addEdge(from: packageName, to: dep.name)
+                    let childRepoName = repositoryName(from: dep.url)
+                    addEdge(from: repoName, to: childRepoName)
+                    if versionTracker.record(version: dep.version, for: childRepoName, source: repoName) {
+                        logConflict(for: childRepoName)
+                    }
+                    if remotePackages[childRepoName] == nil && newlyDiscovered[childRepoName] == nil {
+                        newlyDiscovered[childRepoName] = Remote(url: dep.url, version: dep.version)
+                    }
                 }
                 
                 if let packagePins = try? decoder.decode(PackageResolved.WithoutObjRoot.Pins.self,
@@ -240,7 +258,7 @@ The 'submodules' command triggers the setup process.
                                                                 from: pinsSerialized) {
                     extractDependencies(from: packageObjs).forEach(addDependency)
                 } else {
-                    print("❗️ Could not deserialize Package.resolved, dependencies for \(packageName) have not been extracted")
+                    print("❗️ Could not deserialize Package.resolved, dependencies for \(repoName) have not been extracted")
                 }
             }
             
@@ -249,46 +267,81 @@ The 'submodules' command triggers the setup process.
                 break
             }
             
-            remotePackages.merge(newlyDiscovered) { _, new in new }
+            remotePackages.merge(newlyDiscovered) { existing, _ in existing }
         }
         try writeDependencyGraph(adjacencyList: dependencyGraph,
+                                 nodeVersions: versionTracker.requirements,
+                                 projectNodeName: projectNodeName,
                                  outputURL: dependencyGraphOutputURL)
         print("🧩 Dependency graph saved to \(dependencyGraphOutputURL.path)")
+
+        let conflicts = versionTracker.conflicts
+        if !conflicts.isEmpty {
+            print("\n⚠️  Dependency conflicts detected:")
+            conflicts.forEach { print($0.description) }
+            throw CleanExit.message("Resolve dependency version conflicts before continuing.")
+        }
     }
     
 }
 
 
-func writeDependencyGraph(adjacencyList: [String: Set<String>], outputURL: URL) throws {
+func writeDependencyGraph(adjacencyList: [String: Set<String>],
+                          nodeVersions: [String: [String: Set<String>]],
+                          projectNodeName: String,
+                          outputURL: URL) throws {
     var dotRepresentation = "digraph Dependencies {\n"
     dotRepresentation.append("    rankdir=LR;\n")
     dotRepresentation.append("    node [shape=box];\n")
-    let sortedParents = adjacencyList.keys.sorted()
     var allNodes: Set<String> = Set(adjacencyList.keys)
     adjacencyList.values.forEach { allNodes.formUnion($0) }
+    allNodes.insert(projectNodeName)
+    for node in allNodes.sorted() {
+        let versions = nodeVersions[node]
+        let isConflict = (versions?.keys.count ?? 0) > 1
+        let label = dependencyNodeLabel(for: node, versions: versions)
+        let declaration = dotNodeDeclaration(node, label: label, isConflict: isConflict)
+        dotRepresentation.append("    \(declaration)\n")
+    }
+    let sortedParents = adjacencyList.keys.sorted()
     for parent in sortedParents {
         let children = adjacencyList[parent] ?? []
         for child in children.sorted() {
             dotRepresentation.append("    \(dotEdge(from: parent, to: child))\n")
         }
     }
-    let leafNodes = allNodes.filter { adjacencyList[$0]?.isEmpty ?? true }
-    for node in leafNodes.sorted() {
-        dotRepresentation.append("    \(dotNodeDeclaration(node))\n")
-    }
     dotRepresentation.append("}\n")
     try dotRepresentation.write(to: outputURL, atomically: true, encoding: .utf8)
+}
+
+func dependencyNodeLabel(for node: String,
+                         versions: [String: Set<String>]?) -> String {
+    guard let versions, !versions.isEmpty else { return node }
+    if versions.keys.count == 1, let version = versions.keys.first {
+        return "\(node) (\(version))"
+    }
+    let versionList = versions.keys.sorted().joined(separator: " vs ")
+    return "\(node) (conflict: \(versionList))"
 }
 
 func dotEdge(from parent: String, to child: String) -> String {
     "\(dotIdentifier(parent)) -> \(dotIdentifier(child));"
 }
 
-func dotNodeDeclaration(_ value: String) -> String {
-    "\(dotIdentifier(value));"
+func dotNodeDeclaration(_ value: String, label: String, isConflict: Bool) -> String {
+    var attributes = ["label=\(dotLabel(label))"]
+    if isConflict {
+        attributes.append("color=\"#d14334\"")
+        attributes.append("fontcolor=\"#d14334\"")
+    }
+    return "\(dotIdentifier(value)) [\(attributes.joined(separator: ", "))];"
 }
 
 func dotIdentifier(_ value: String) -> String {
+    "\"\(value.replacingOccurrences(of: "\"", with: "\\\""))\""
+}
+
+func dotLabel(_ value: String) -> String {
     "\"\(value.replacingOccurrences(of: "\"", with: "\\\""))\""
 }
 
@@ -314,6 +367,54 @@ struct Dependency {
 }
 
 
+
+func repositoryName(from url: String) -> String {
+    guard let lastComponent = url.split(separator: "/").last else { return url }
+    return lastComponent.replacingOccurrences(of: ".git", with: "")
+}
+
+
+struct DependencyVersionTracker {
+    private(set) var requirements: [String: [String: Set<String>]] = [:]
+    
+    @discardableResult
+    mutating func record(version: String, for node: String, source: String) -> Bool {
+        var nodeRequirements = requirements[node, default: [:]]
+        let hadConflictBefore = nodeRequirements.keys.count > 1
+        var sources = nodeRequirements[version, default: []]
+        sources.insert(source)
+        nodeRequirements[version] = sources
+        requirements[node] = nodeRequirements
+        let hasConflictAfter = nodeRequirements.keys.count > 1
+        return !hadConflictBefore && hasConflictAfter
+    }
+    
+    var conflicts: [DependencyConflict] {
+        requirements
+            .compactMap { key, versions in
+                versions.keys.count > 1 ? DependencyConflict(node: key, versions: versions) : nil
+            }
+            .sorted { $0.node < $1.node }
+    }
+}
+
+struct DependencyConflict: CustomStringConvertible {
+    let node: String
+    let versions: [String: Set<String>]
+    
+    var description: String {
+        let versionDetails = versions
+            .keys
+            .sorted()
+            .map { version in
+                let sources = versions[version] ?? []
+                let sortedSources = sources.sorted().joined(separator: ", ")
+                return "  - \(version): \(sortedSources)"
+            }
+            .joined(separator: "\n")
+        return "\(node):\n\(versionDetails)"
+    }
+}
 
 extension String {
     func firstIndex(of substring: String) -> String.Index? {
