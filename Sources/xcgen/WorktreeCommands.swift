@@ -99,10 +99,17 @@ extension Worktree {
                 baseBranch
             ]
             process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
+            let standardError = Pipe()
+            process.standardError = standardError
             process.launch()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
+                let errorOutput = String(data: standardError.fileHandleForReading.readDataToEndOfFile(),
+                                         encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if let errorOutput, !errorOutput.isEmpty {
+                    throw ValidationError("git worktree add failed with exit code \(process.terminationStatus): \(errorOutput)")
+                }
                 throw ValidationError("git worktree add failed with exit code \(process.terminationStatus)")
             }
         }
@@ -135,10 +142,17 @@ extension Worktree {
                 branch
             ]
             process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
+            let standardError = Pipe()
+            process.standardError = standardError
             process.launch()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
+                let errorOutput = String(data: standardError.fileHandleForReading.readDataToEndOfFile(),
+                                         encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if let errorOutput, !errorOutput.isEmpty {
+                    throw ValidationError("git checkout \(branch) failed with exit code \(process.terminationStatus): \(errorOutput)")
+                }
                 throw ValidationError("git checkout \(branch) failed with exit code \(process.terminationStatus)")
             }
         }
