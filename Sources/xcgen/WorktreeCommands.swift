@@ -208,11 +208,59 @@ struct PackagesLayout {
     private func copyContents(from source: URL, to destination: URL) throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: destination.path) { return }
-        if !fileManager.fileExists(atPath: source.path) {
+        guard fileManager.fileExists(atPath: source.path) else {
             try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
             return
         }
-        try fileManager.copyItem(at: source, to: destination)
+        do {
+            try fileManager.copyItem(at: source, to: destination)
+        } catch {
+            print("⚠️  Standard copy from \(source.lastPathComponent) to \(destination.lastPathComponent) failed: \(error.localizedDescription). Retrying file-by-file.")
+            try copyDirectoryItemByItem(from: source, to: destination)
+        }
+    }
+
+    private func copyDirectoryItemByItem(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: destination.path) {
+            try? fileManager.removeItem(at: destination)
+        }
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        let errorContext = "Copying \(source.lastPathComponent)"
+        guard let enumerator = fileManager.enumerator(at: source,
+                                                     includingPropertiesForKeys: [.isDirectoryKey],
+                                                     options: [],
+                                                     errorHandler: { url, error -> Bool in
+                                                         print("❗️  \(errorContext) hit an error at \(url.lastPathComponent): \(error.localizedDescription). Continuing…")
+                                                         return true
+                                                     }) else { return }
+        var failures = 0
+        let sourcePath = source.standardizedFileURL.path
+        for case let itemURL as URL in enumerator {
+            let standardizedItemPath = itemURL.standardizedFileURL.path
+            guard standardizedItemPath.hasPrefix(sourcePath) else { continue }
+            let dropCount = sourcePath.count + 1
+            if standardizedItemPath.count <= dropCount { continue }
+            let relativePath = String(standardizedItemPath.dropFirst(dropCount))
+            let destinationURL = destination.appendingPathComponent(relativePath)
+            let isDirectory = (try? itemURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDirectory {
+                try fileManager.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+                continue
+            }
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try? fileManager.removeItem(at: destinationURL)
+            }
+            do {
+                try fileManager.copyItem(at: itemURL, to: destinationURL)
+            } catch {
+                failures += 1
+                print("❗️  Failed to copy \(itemURL.lastPathComponent) to \(destinationURL.path): \(error.localizedDescription)")
+            }
+        }
+        if failures > 0 {
+            print("⚠️  Completed copy with \(failures) issue(s). Check \(destination.lastPathComponent) if something looks off.")
+        }
     }
 }
 
