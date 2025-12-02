@@ -62,12 +62,12 @@ extension Worktree {
 
         func run() throws {
             let fileManager = FileManager.default
-            let destinationURL = URL(fileURLWithPath: destinationPath, relativeTo: URL(fileURLWithPath: fileManager.currentDirectoryPath)).standardized
+            let repoRoot = try Git.repositoryRoot()
+            let destinationURL = resolveDestinationURL(destinationPath, repoRoot: repoRoot)
             if fileManager.fileExists(atPath: destinationURL.path) {
                 throw ValidationError("Destination \(destinationURL.path) already exists.")
             }
 
-            let repoRoot = try Git.repositoryRoot()
             let baseBranch = try from ?? Git.currentBranch()
 
             try runGitWorktreeAdd(destinationURL: destinationURL,
@@ -81,6 +81,14 @@ extension Worktree {
             }
             try runGitCheckout(destinationURL: destinationURL, branch: branchName)
             print("✅ Worktree created at \(destinationURL.path)")
+        }
+
+        private func resolveDestinationURL(_ path: String, repoRoot: URL) -> URL {
+            let expanded = (path as NSString).expandingTildeInPath
+            if expanded.hasPrefix("/") {
+                return URL(fileURLWithPath: expanded).standardizedFileURL
+            }
+            return repoRoot.appendingPathComponent(expanded).standardizedFileURL
         }
 
         private func runGitWorktreeAdd(destinationURL: URL,
