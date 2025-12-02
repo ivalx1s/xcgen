@@ -85,10 +85,12 @@ extension Worktree {
 
         private func resolveDestinationURL(_ path: String, repoRoot: URL) -> URL {
             let expanded = (path as NSString).expandingTildeInPath
-            if expanded.hasPrefix("/") {
-                return URL(fileURLWithPath: expanded).standardizedFileURL
+            let expandedNSString = expanded as NSString
+            if expandedNSString.isAbsolutePath {
+                return URL(fileURLWithPath: expandedNSString.standardizingPath)
             }
-            return repoRoot.appendingPathComponent(expanded).standardizedFileURL
+            let combined = (repoRoot.path as NSString).appendingPathComponent(expanded)
+            return URL(fileURLWithPath: (combined as NSString).standardizingPath)
         }
 
         private func runGitWorktreeAdd(destinationURL: URL,
