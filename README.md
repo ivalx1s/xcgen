@@ -18,6 +18,19 @@ Please note that this project is still evolving, but it already manages much mor
 
 ---
 
+🔨 Installing from a local checkout
+
+Build a release binary and place it on your `PATH`:
+
+- Apple Silicon Homebrew prefix: `swift build -c release && sudo install -m 755 .build/release/xcgen /opt/homebrew/bin/xcgen`
+- Intel/older Homebrew prefix: `swift build -c release && sudo install -m 755 .build/release/xcgen /usr/local/bin/xcgen`
+- Overwrite a Mint-installed binary: `swift build -c release && install -m 755 .build/release/xcgen ~/.mint/bin/xcgen` (no sudo needed)
+- If you prefer a personal bin dir: `swift build -c release && install -m 755 .build/release/xcgen ~/bin/xcgen` (ensure `~/bin` is on `PATH`)
+
+After installing, double-check you are picking up the expected binary: `which -a xcgen`. If an older Mint copy still precedes it, adjust `PATH` or remove the old binary.
+
+---
+
 🔧 Usage
 
 This helper utility is intended to be used when all dependencies are managed through the Swift Package Manager.

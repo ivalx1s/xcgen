@@ -239,7 +239,20 @@ struct PackagesLayout {
         do {
             try fileManager.copyItem(at: source, to: destination)
         } catch {
-            print("⚠️  Standard copy from \(source.lastPathComponent) to \(destination.lastPathComponent) failed: \(error.localizedDescription). Retrying file-by-file.")
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain,
+               nsError.code == NSFileWriteFileExistsError {
+                try? fileManager.removeItem(at: destination)
+                do {
+                    try fileManager.copyItem(at: source, to: destination)
+                    return
+                } catch {
+                    // fall through and surface the retry message for the second failure
+                }
+            }
+            let conflictPath = (error as NSError).userInfo[NSFilePathErrorKey] as? String
+            let conflictDescription = conflictPath ?? error.localizedDescription
+            print("⚠️  Standard copy from \(source.lastPathComponent) to \(destination.lastPathComponent) failed: \(conflictDescription). Retrying file-by-file.")
             try copyDirectoryItemByItem(from: source, to: destination)
         }
     }
